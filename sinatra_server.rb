@@ -9,6 +9,8 @@ require 'rufus/scheduler'
 require 'trophy_calculations'
 require 'helper'
 require 'userscore'
+require 'time'
+require 'logger'
 
 #enable :sessions
 use Rack::Session::Pool #fix 4kb session dropping
@@ -16,13 +18,27 @@ use Rack::Session::Pool #fix 4kb session dropping
 scheduler = Rufus::Scheduler.start_new
 scheduler.cron('*/15 * * * *') { fetch_all }
 
+$application_start = Time.new
+
+
+# http://groups.google.com/group/rack-devel/browse_frm/thread/ffec93533180e98a
+class WorkaroundLogger < Logger
+  alias write <<
+end
+# log http requests
+configure do
+    Dir.mkdir('logs') unless File.exists?('logs')
+    use Rack::CommonLogger, WorkaroundLogger.new('logs/access.log', 'daily')
+end
+
+
 before do
     @user = User.get(session['user_id'])
     @logged_in = @user.nil?
     @tournament_identifier = "junethack2011 #{@user.login}" if @user
     @messages = session["messages"] || []
     @errors = session["errors"] || []
-    @logged_in = @user.nil?
+
     puts "got #{@messages.length} messages"
     puts "and #{@errors.length} errors"
     puts "#{@errors.inspect}"
@@ -30,12 +46,28 @@ before do
     session["errors"] = []
 end
 
+def caching_check_last_played_game
+    last_played_game_time = repository.adapter.select("select max(endtime) from games where user_id is not null;")[0]
+
+    etag last_played_game_time if last_played_game_time
+    last_modified Time.at(last_played_game_time.to_i).httpdate if last_played_game_time
+end
+
+def caching_check_application_start_time
+    etag $application_start if $application_start
+    last_modified Time.at($application_start.to_i).httpdate if $application_start
+end
+
 get "/" do
+    caching_check_application_start_time if not @user
+
     @show_banner = true
     haml :splash
 end
 
 get "/login" do
+    caching_check_application_start_time
+
     @show_banner = true
     haml :login
 end
@@ -48,16 +80,22 @@ get "/logout" do
 end
 
 get "/trophies" do
+    caching_check_application_start_time
+
     @show_banner = true
     haml :trophies
 end
 
 get "/users" do 
-    @users = User.all
+    caching_check_last_played_game
+
+    @users = User.all :order => [ :login.asc ]
     haml :users
 end
 
 get "/about" do
+    caching_check_application_start_time
+
     @show_banner = true
     haml :about
 end
@@ -80,6 +118,8 @@ get "/register" do
 end
 
 get "/rules" do
+    caching_check_application_start_time
+
     @show_banner = true
     haml :rules
 end
@@ -153,6 +193,8 @@ post "/create" do
 end
 
 get "/user/:name" do
+    caching_check_last_played_game
+
     @player = User.first(:login => params[:name])
 
     if @player
@@ -178,6 +220,8 @@ get "/user_id/:id" do
 end
 
 get "/clans" do
+    caching_check_last_played_game
+
     @clans = Clan.all
     haml :clans
 end
@@ -204,6 +248,8 @@ post "/clan" do
         end
         acc.clan = clan
         acc.save
+        @user.clan = clan.name
+        @user.save
         session['messages'] << "Successfully created clan #{params[:clanname]}"
         puts CGI.escape(acc.clan.name)
         redirect "/clan/" + CGI.escape(acc.clan.name)
@@ -243,6 +289,8 @@ get "/respond/:server_id/:token" do #respond to invitation
                 acc.invitations.reject!{|inv| inv['token'] == params[:token]}
                 if accept
                     acc.clan = Clan.first(:name => invitation['clan_id'])
+                    @user.clan = acc.clan.name
+                    @user.save
                 end
                 acc.invitations = acc.invitations.to_json
                 acc.save
@@ -263,6 +311,8 @@ get "/clan/disband/:name" do
             ClanScoreEntry.all(:clan_name => clan.name).destroy
             if clan.destroy
                 session['messages'] << "Successfully disbanded #{params[:name]}"
+                @user.clan = nil
+                @user.save
             else
                 session['errors'] << "Could not destroy clan"
             end
@@ -288,6 +338,8 @@ get "/leaveclan/:server" do  #leave a clan
             clanname = account.clan.name
             account.clan = nil
             account.save
+            @user.clan = nil
+            @user.save
             session['messages'] << "Successfully left clan #{clanname}"
         end
     else
@@ -308,14 +360,16 @@ get "/scores/:name" do |name|
     user_id = {:user_id => @u.id}
     @last_10_games = get_last_games(user_id)
     @most_ascended_users = most_ascensions_users(@u.id)
-    @highest_density_users = best_sustained_ascension_rate(@u.id)
     haml :user_scores
 end
 
 get "/scoreboard" do
-    @last_10_games = get_last_games
     @most_ascended_users = most_ascensions_users
-    @highest_density_users = best_sustained_ascension_rate
+
+    @games_played = Game.all(:conditions => [ 'user_id is not null' ], :order => [ :endtime.desc ], :limit => 50)
+    @games_played_user_links = true
+    @games_played_title = "Last #{@games_played.size} games played"
+
     haml :scoreboard
 end
 
@@ -327,7 +381,7 @@ end
 get "/server/:name" do
     @server = Server.first(:name => params[:name])
     if @server
-        @games = @server.games
+        @games = @server.games :conditions => [ 'user_id is not null' ], :order => [ :endtime.desc ], :limit => 50
         haml :server
     else
         session['errors'] << "Could not find server #{ params[:name] }"
@@ -336,10 +390,12 @@ get "/server/:name" do
 end
 
 get "/last_games_played" do
+    caching_check_last_played_game
+
     @games_played = Game.all(:conditions => [ 'user_id is not null' ], :order => [ :endtime.desc ], :limit => 50)
     @games_played_user_links = true
     @games_played_title = "Last #{@games_played.size} games played"
-    haml :games_played
+    haml :last_games_played
 end
 
 helpers do

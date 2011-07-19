@@ -1,4 +1,4 @@
-.text_content
+.text_content.non_top_post
   %h3= @games_played_title
   .scorelisting
     %table{:style => "width: 100%;"}
@@ -8,7 +8,7 @@
         %th Server
         %th Points
         %th Killer
-        %th Time
+        %th Time (UTC)
       - count = 0
       - @games_played.each do |game|
         - style = (count % 2) == 0 ? "cell1" : "cell2"
