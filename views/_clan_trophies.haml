@@ -1,9 +1,7 @@
 %h2
   Clan Competition
-%h3
-  Highest Score
 .scorelisting
-  %table
+  %table.greytable
     %tr
       %th 
         Clan
@@ -17,7 +15,7 @@
         - break
       %tr#cell1
         %td
-          %a{:href => "/clan/" + entry.clan.name}
+          %a{:href => "/clan/#{CGI::escape entry.clan.name}"}
             #{h entry.clan.name}
         %td
           #{h entry.value}
