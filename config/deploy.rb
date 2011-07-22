@@ -1,3 +1,4 @@
+require "bundler/capistrano"
 set :application, "junethack"
 set :repository,  "git://github.com/junethack/Junethack"
 set :scm, :git
@@ -5,7 +6,6 @@ set :scm, :git
 set :deploy_to, "~/Junethack"
 set :user, "junethack"
 set :branch, "cap-test"
-set :use_sudo, false
 ssh_options[:keys] = [File.join(ENV["HOME"], "junethack.pem")]
 role :web, "50.17.55.154"                          # Your HTTP server, Apache/etc
 role :app, "50.17.55.154"                          # This may be the same as your `Web` server
@@ -15,6 +15,18 @@ role :db,  "50.17.55.154", :primary => true # This is where Rails migrations wil
 # If you are using Passenger mod_rails uncomment this:
 # if you're still using the script/reapear helper you will need
 # these http://github.com/rails/irs_process_scripts
+
+namespace :setup do
+    task :essentials do
+	run "#{try_sudo} yum -y install rubygems"
+    end
+    task :bundler do
+	run "#{try_sudo} gem install bundler"
+    end
+    task :gems do
+	run "#{try_sudo} bundle install"
+    end
+end
 
 # namespace :deploy do
 #   task :start {}
