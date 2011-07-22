@@ -4,6 +4,8 @@ set :scm, :git
 # Or: `accurev`, `bzr`, `cvs`, `darcs`, `git`, `mercurial`, `perforce`, `subversion` or `none`
 set :deploy_to, "~/Junethack"
 set :user, "junethack"
+set :branch, "cap-test"
+set :use_sudo, false
 ssh_options[:keys] = [File.join(ENV["HOME"], "junethack.pem")]
 role :web, "50.17.55.154"                          # Your HTTP server, Apache/etc
 role :app, "50.17.55.154"                          # This may be the same as your `Web` server
