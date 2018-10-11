@@ -8,7 +8,7 @@ gem "haml"
 gem "sinatra", "~> 1.4.0"
 gem "rufus-scheduler"
 gem 'sinatra-cache', :git => 'git://github.com/kematzy/sinatra-cache.git'
-gem 'sanitize'
+gem 'sanitize', '>= 2.0.5'
 
 gem "rack-mobile-detect"
 
